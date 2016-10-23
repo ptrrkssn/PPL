@@ -1,0 +1,21 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use lib '/home/peter/Projects';
+
+use PPL::DNS;
+
+
+my @rev = dns_lookup($ARGV[0], 'PTR');
+print "REV: ".join(',', @rev)."\n" if @rev;
+
+my @ipv4 = dns_lookup($ARGV[0], 'A');
+print "IPv4: ".join(',', @ipv4)."\n" if @ipv4;
+
+my @ipv6 = dns_lookup($ARGV[0], 'AAAA');
+print "IPv6: ".join(',', @ipv6)."\n" if @ipv6;
+
+
+

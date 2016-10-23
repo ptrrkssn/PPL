@@ -6,18 +6,85 @@ use warnings;
 use DBI;
 use Data::Dumper;
 
+# type://user:pass@host/name
+#
+# mysql://user:pass/name  (host=localhost)
+# mysql://user@host/name  (pass=none)
+# mysql://user/name       (pass=none, host=localhost)
+# mysql:name
+#
+sub uri2tok {
+    my ($uri) = @_;
+    my ($type, $user, $pass, $host, $name);
+
+    my $r = $uri;
+
+    # Get database type (default: mysql)
+    if ($r =~ /^([^:]+):(.+)/i) {
+	$type = $1;
+	$r = $2;
+    }
+
+    # Handle '//user:pass@host/name'
+    if ($r =~ /\/\/([^\/]+)\/(.+)/i) {
+	my $uph = $1;
+	$name = $2;
+
+	# Handle '[user[:pass]][@host]'
+	if ($uph =~ /([^@]+)@(.+)/i) {
+	    my $up = $1;
+	    $host = $2;
+
+	    # Handle 'user[:pass]'
+	    if ($up =~ /([^:]+):(.*)/i) {
+		$user = $1;
+		$pass = $2;
+	    } else {
+		$user = $up;
+	    }
+
+	} else {
+	    if ($uph =~ /([^:]+):(.*)/i) {
+		$user = $1;
+		$pass = $2;
+	    } else {
+		$user = $uph;
+	    }
+	}
+    } else { 
+	if ($r =~ /([^\/]+)\/(.*)/i) {
+	    my $up = $1;
+	    $name = $2;
+
+	    # Handle 'user[:pass]'
+	    if ($up =~ /([^:]+):(.*)/i) {
+		$user = $1;
+		$pass = $2;
+	    } else {
+		$user = $up;
+	    }
+	} else {
+	    $name = $r;
+	}
+    }
+
+    $name =~ s/^\/+//;
+    
+    return ($type, $user, $pass, $host, $name);
+}
+
 sub open {
     my $class = shift;
-    my $n = shift;
-    my $u = shift;
-    my $p = shift;
-    my $h = shift;
+    my $uri = shift;
     my $a = shift;
+
+    my ($t, $u, $p, $h, $n) = uri2tok($uri);
+    $t = "mysql" unless defined $t;
 
     $h = 'localhost' if ! defined $h;
     $a = { AutoCommit => 1, RaiseError => 0, PrintError => 1 } if ! defined $a;
 
-    my $db = DBI->connect("DBI:mysql:database=$n;host=$h", $u, $p, $a);
+    my $db = DBI->connect("DBI:$t:database=$n;host=$h", $u, $p, $a);
 
     my $self = {
 	_db_name  => $n,
@@ -226,36 +293,87 @@ sub _fetchrows_aa {
 }
 
 
-sub select {
+sub select_h {
     my ( $self, $t, $fields, $sel, $op) = @_;
     my @res;
 
     my $rs = _select($self->{_db}, $t, $fields, $sel, $op);
-    return _fetchrows_ah(rs);
+    return unless $rs;
+
+    return _fetchrows_ah($rs);
 }
+
+
+sub select {
+    my ( $self, $t, $fields, $sel, $op) = @_;
+    return select_h($self, $t, $fields, $sel, $op);
+}
+
+
+sub select_a {
+    my ( $self, $t, $fields, $sel, $op) = @_;
+    my @res;
+
+    my $rs = _select($self->{_db}, $t, $fields, $sel, $op);
+    return unless $rs;
+
+    return _fetchrows_aa($rs);
+}
+
+
+
 
 sub select_1h {
     my ( $self, $t, $fields, $sel, $op) = @_;
-    my @res;
-
 
     my $rs = _select($self->{_db}, $t, $fields, $sel, $op);
-    my @res _fetchrows_ah(rs);
-    
-    return $res[0] if 1 == @res;
-    return;
+    return unless $rs;
+
+    my @res = _fetchrows_ah($rs);
+
+    # Make sure a single row is returned
+    return unless 1 == @res;
+
+    return $res[0];
 }
 
 sub select_1a {
     my ( $self, $t, $fields, $sel, $op) = @_;
-    my @res;
-
 
     my $rs = _select($self->{_db}, $t, $fields, $sel, $op);
-    my @res _fetchrows_aa(rs);
+    return unless $rs;
+
+    my $res = $rs->fetchrow_arrayref();
+    return unless $res;
+
+    return if $rs->fetchrow_arrayref();
     
-    return $res[0] if 1 == @res;
-    return;
+    return @$res;
+}
+
+
+# 
+# Select and return a single colum from a single row, else 'undef'
+#
+sub select_1v {
+    my ( $self, $t, $fields, $sel, $op) = @_;
+
+    my $rs = _select($self->{_db}, $t, $fields, $sel, $op);
+    return unless $rs;
+
+
+    # Get result row
+    my $row = $rs->fetchrow_arrayref();
+
+    return unless $row;
+
+    # Make sure a single row is returned
+    return if $rs->fetchrow_arrayref();
+
+    # Make sure a single column is returned
+    return unless 1 == @$row;
+
+    return @{$row}[0];
 }
 
 
@@ -396,5 +514,60 @@ sub touch_datetime {
 }
 
 
+sub _run {
+    my $db = $_[0];
+    shift;
+
+    my $statement = $_[0];
+    shift;
+
+    my $rs = $db->prepare($statement);
+
+    $rs->execute(@_) if $rs;
+    return $rs;
+}
+
+
+sub run {
+    my $self = $_[0];
+    shift;
+    my $statement = $_[0];
+    shift;
+
+    my $rs = _run($self->{_db}, $statement, @_);
+    return unless defined $rs;
+
+    return _fetchrows_ah($rs);
+}
+
+
+sub run_1v {
+    my $self = $_[0];
+    shift;
+    my $statement = $_[0];
+    shift;
+
+    my $rs = _run($self->{_db}, $statement, @_);
+
+    # Get result row
+    my $row = $rs->fetchrow_arrayref();
+
+    return unless $row;
+
+    # Make sure a single row is returned
+    return if $rs->fetchrow_arrayref();
+
+    # Make sure a single column is returned
+    return unless 1 == @$row;
+
+    return @{$row}[0];
+}
+
+# Quote table/column identifiers
+sub qi {
+    my ( $self, $id ) = @_;
+
+    return $self->{_db}->quote_identifier($id);
+}
 
 1;

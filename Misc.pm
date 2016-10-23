@@ -2,8 +2,76 @@ package PPL::Misc;
 
 use Exporter qw(import);
 
-our @EXPORT = qw(abbrev_compare range2str str2range print_array purge_array clean_array in_array);
+our @EXPORT = qw(abbrev_compare range2str str2range print_array purge_array clean_array in_array uri2tok);
 
+
+
+# type://user:pass@host/name
+#
+# mysql://user:pass/name  (host=localhost)
+# mysql://user@host/name  (pass=none)
+# mysql://user/name       (pass=none, host=localhost)
+# mysql:name
+#
+sub uri2tok {
+    my ($uri) = @_;
+    my ($type, $user, $pass, $host, $name);
+
+    my $r = $uri;
+
+    # Get database type (default: mysql)
+    if ($r =~ /^([^:]+):(.+)/i) {
+	$type = $1;
+	$r = $2;
+    }
+
+    # Handle '//user:pass@host/name'
+    if ($r =~ /\/\/([^\/]+)\/(.+)/i) {
+	my $uph = $1;
+	$name = $2;
+
+	# Handle '[user[:pass]][@host]'
+	if ($uph =~ /([^@]+)@(.+)/i) {
+	    my $up = $1;
+	    $host = $2;
+
+	    # Handle 'user[:pass]'
+	    if ($up =~ /([^:]+):(.*)/i) {
+		$user = $1;
+		$pass = $2;
+	    } else {
+		$user = $up;
+	    }
+
+	} else {
+	    if ($uph =~ /([^:]+):(.*)/i) {
+		$user = $1;
+		$pass = $2;
+	    } else {
+		$user = $uph;
+	    }
+	}
+    } else { 
+	if ($r =~ /([^\/]+)\/(.*)/i) {
+	    my $up = $1;
+	    $name = $2;
+
+	    # Handle 'user[:pass]'
+	    if ($up =~ /([^:]+):(.*)/i) {
+		$user = $1;
+		$pass = $2;
+	    } else {
+		$user = $up;
+	    }
+	} else {
+	    $name = $r;
+	}
+    }
+
+    $name =~ s/^\/+//;
+    
+    return ($type, $user, $pass, $host, $name);
+}
 
 
 # 
@@ -44,8 +112,6 @@ sub abbrev_compare {
 #
 # ---------- RANGE SUPPORT FUNCTIONS ----------------------------------------
 #
-
-# XXX Move to PPL
 
 sub range2str {
     my $len = @_;

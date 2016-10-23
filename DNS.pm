@@ -26,7 +26,11 @@ sub dns_lookup {
 
     foreach my $rr ($dnsq->answer) {
 	if ($rr->type eq $q) {
-	    push @r, $rr->address;
+	    if ($q eq 'PTR') {
+		push @r, $rr->ptrdname;
+	    } else {
+		push @r, $rr->address;
+	    }
 	}
     }
 

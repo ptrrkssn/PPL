@@ -23,7 +23,9 @@ sub null_formatter {
 sub t_t_print {
     my ( $table, $attrs) = @_;
 
-    my $f_limit  = $attrs->{limit};
+    my $limit  = $attrs->{limit};
+    my $start  = $attrs->{start};
+
     my $f_border = $attrs->{border};
 
     my @columns  = @{$attrs->{order}};
@@ -39,10 +41,13 @@ sub t_t_print {
     }
 
     my $n = 0;
-    foreach (@{$table}) {
-	my $row = $_;
+    my @t = @$table;
+    my $i;
+
+    foreach $i ($start .. $#t) {
+	my $row = $t[$i];
 	
-	last if ($f_limit && $n++ >= $f_limit);
+	last if defined $limit && $n > $limit;
 
 # Check size of each cell value
 	foreach (@columns) {
@@ -52,9 +57,11 @@ sub t_t_print {
 	    my $afh = $attrs->{format};
 	    $fmt = $afh->{$_} if defined $afh && defined $afh->{$_};
 
-	    my $len = length($fmt->($row, $v));
+	    my $len = length($fmt->($row, $v, 0));
 	    $width->{$_} = $len if $len > $width->{$_};
 	}
+
+	$n++;
     }
 
 # Calculate the total width of the list with all columns
@@ -112,11 +119,10 @@ sub t_t_print {
 
 # Loop through array of objects
     $n = 0;
-    foreach (@{$table}) {
-	my $row = $_;
-	my $i;
+    foreach $i ($start .. $#t) {
+	my $row = $t[$i];
 
-	last if ($f_limit && $n++ >= $f_limit);
+	last if ($limit && $n >= $limit);
 
 	print "|" if $f_border;
 	print " ";
@@ -139,6 +145,8 @@ sub t_t_print {
 	print " ";
 	print "|" if $f_border;
 	print "\n";
+
+	$n++;
     }
 
     if ($f_border) {

@@ -1,0 +1,69 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use lib '/home/peter/Projects';
+
+use DBI;
+use PPL::DB;
+use Data::Dumper;
+
+
+
+my $dbhost="pf-master.it.liu.se";
+my $dbname="liupf";
+my $dbuser="liupfadm";
+my $dbpass="eendvk234sdl323";
+my $dbattr = { RaiseError => 0, PrintError => 0 };
+
+my $db = PPL::DB->open($dbname, $dbuser, $dbpass, $dbhost, $dbattr) || 
+    die "DB OPEN FAILED (".DBI->errstr().")";
+
+
+my @sa = $db->select('roles', '*'); 
+# die "DB SELECT FAILED (".$db->errstr().") " unless @sa;
+
+my $n = 0;
+foreach (@sa) {
+    my %row = %$_;
+
+    print "\n" if $n;
+    foreach my $key (sort keys %row) {
+	my $val = $row{$key};
+	$val = "<null>" unless defined $val;
+	printf "%-16s   = %s\n", $key, $val;
+    }
+    $n++;
+}
+
+my $q = 'COUNT(`id`)';
+
+print "\n" x 5;
+
+print "TEST select() ----\n";
+my @ca = $db->select('nodes', $q);
+if (1 == @ca) {
+    my $a = $ca[0];
+    my $nid = $a->{$q};
+    print "N(id) = $nid\n";
+}
+
+print "TEST select_1v() ----\n";
+my $v1 = $db->select_1v('nodes', $q);
+print "N(id) v1 = $v1\n";
+
+print "TEST select_1h() ----\n";
+my $hr = $db->select_1h('nodes', $q);
+my $v2 = $hr->{$q};
+print "N(id) v2 = $v2\n";
+
+print "TEST select_1a() ----\n";
+my @arr = $db->select_1a('nodes', $q);
+my $v3 = $arr[0];
+print "N(id) v3 = $v3\n";
+
+$db->close() || die "DB CLOSE FAILED (".$db->errstr().")";
+
+
+exit 0;
